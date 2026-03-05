@@ -1,0 +1,51 @@
+import json
+import boto3
+import os
+
+dynamo = boto3.resource('dynamodb')
+table = dynamo.Table('FeedbackTable')
+
+sns_topic_arn = os.environ.get('SNS_TOPIC_ARN', '')
+sns = boto3.client('sns')
+
+def lambda_handler(event, context):
+    if event.get("httpMethod") == "OPTIONS":
+        return _response(200, {"message": "CORS OK"})
+
+    try:
+        body = json.loads(event.get("body") or "{}")
+    except:
+        return _response(400, {"error": "Invalid JSON"})
+
+    name = body.get("name")
+    email = body.get("email")
+    message = body.get("message")
+
+    if not name or not email or not message:
+        return _response(400, {"error": "Missing fields"})
+
+    table.put_item(Item={
+        "email": email,
+        "name": name,
+        "message": message
+    })
+
+    if sns_topic_arn:
+        sns.publish(
+            TopicArn=sns_topic_arn,
+            Subject="New Feedback",
+            Message=f"Name: {name}\nEmail: {email}\nMessage: {message}"
+        )
+
+    return _response(200, {"status": "success"})
+
+def _response(code, body):
+    return {
+        "statusCode": code,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "OPTIONS,POST"
+        },
+        "body": json.dumps(body)
+    }
